@@ -50,7 +50,7 @@ body{background:var(--paper-deep);color:var(--ink);font-family:var(--sans);-webk
 ::-webkit-scrollbar{width:0;height:0;}
 
 .app{
-  max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--paper);
+  max-width:600px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--paper);
   background-image:radial-gradient(circle at 100% 0%, rgba(169,118,44,.06), transparent 45%);
   position:relative;
   box-shadow:0 0 80px rgba(11,31,58,.14);
@@ -306,12 +306,12 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
 .placeholder-item:active{border-color:var(--brass);}
 
 /* ---------- Bottom nav ---------- */
-.bottomnav{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:var(--card);border-top:1px solid var(--line);
+.bottomnav{position:fixed;bottom:0;left:0;right:0;max-width:600px;margin:0 auto;background:var(--card);border-top:1px solid var(--line);
   display:flex;justify-content:space-around;align-items:center;padding:9px 4px 12px;
   box-shadow:0 -6px 20px rgba(11,31,58,.06);z-index:50;}
 
 /* ---------- Adsterra: bottom banner slot (sits just above the bottom nav) ---------- */
-.ad-bottombanner{position:fixed;bottom:70px;left:0;right:0;max-width:480px;margin:0 auto;
+.ad-bottombanner{position:fixed;bottom:70px;left:0;right:0;max-width:600px;margin:0 auto;
   height:50px;background:var(--card);border-top:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;overflow:hidden;z-index:51;}
 
@@ -425,7 +425,7 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
 .khata-modal-overlay{position:fixed;inset:0;background:rgba(11,31,58,.55);display:none;align-items:flex-end;
   justify-content:center;z-index:200;}
 .khata-modal-overlay.show{display:flex;}
-.khata-modal{background:var(--card);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px 18px 24px;
+.khata-modal{background:var(--card);width:100%;max-width:600px;border-radius:20px 20px 0 0;padding:20px 18px 24px;
   max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lift);animation:khataSlideUp .22s ease;}
 @keyframes khataSlideUp{from{transform:translateY(24px);opacity:.4;}to{transform:translateY(0);opacity:1;}}
 .khata-stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0;}
@@ -498,6 +498,12 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
       <div style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:14px;">Each account's data is private and only visible after signing in with that account.</div>
     </div>
   </div>
+  <!-- ============ LOADING OVERLAY — shown briefly while shop data loads after sign-in ============ -->
+  <div id="khLoadingOverlay" style="position:fixed;inset:0;z-index:998;background:var(--paper-deep);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;">
+    <div style="width:38px;height:38px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brass);animation:khSpin .8s linear infinite;"></div>
+    <div style="font-size:12.5px;color:var(--muted);">Loading your shop…</div>
+  </div>
+  <style>@keyframes khSpin{to{transform:rotate(360deg);}}</style>
   <div class="app" id="khAppRoot" style="display:none;">
     <div class="topbar">
       <div class="topbar-row">
@@ -814,6 +820,14 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
           <div class="kpi-icon" style="font-size:26px;margin-bottom:0;">💰</div>
         </div>
       </div>
+      <div class="card" style="border:1.5px solid var(--brass);background:linear-gradient(135deg,rgba(140,90,20,.10),rgba(140,90,20,.03));margin-bottom:14px;">
+        <h3 style="display:flex;align-items:center;gap:6px;">💵 Quick Charge <span style="font-weight:400;font-size:11px;color:var(--muted);">— no item needed</span></h3>
+        <div class="row2">
+          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">What's this for?</label><input type="text" id="khQuickChargeDesc" placeholder="e.g. Oil Change"></div>
+          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">Amount (₹)</label><input type="number" id="khQuickChargeAmount" placeholder="e.g. 500" inputmode="decimal"></div>
+        </div>
+        <button class="btn" style="width:100%;background:linear-gradient(135deg,#186B45,#0F5236);" onclick="khataAddQuickCharge()">➕ Add to Bill</button>
+      </div>
       <div class="section-label">Quick Entry</div>
       <div class="khata-mic-btn" id="khMicBtn" onclick="khataStartVoiceSale()">🎤 Voice Entry — speak item &amp; quantity</div>
       <div class="khata-mic-btn" style="margin-top:8px;border-color:var(--green);background:rgba(15,82,54,.08);" onclick="document.getElementById('khCsvImportFile').click()">⬆ Import Bills from CSV — add many bills at once</div>
@@ -829,7 +843,7 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
       <div style="height:70px;"></div>
     </div>
     <div id="khCartBar" style="display:none;position:fixed;left:0;right:0;bottom:64px;z-index:60;">
-      <div style="max-width:480px;margin:0 auto;padding:0 14px;">
+      <div style="max-width:600px;margin:0 auto;padding:0 14px;">
         <div style="background:linear-gradient(135deg,#0F3D2E,#155A44);color:#F8F5EE;border-radius:14px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(11,31,58,.3);" onclick="khataOpenCheckout()">
           <div><div style="font-size:11px;color:#cdd8ea;" id="khCartCount">0 items</div><div style="font-weight:800;font-size:16px;color:#7FE0AE;" id="khCartTotal">₹0</div></div>
           <div style="font-weight:700;font-size:13px;background:var(--green);color:#fff;padding:8px 14px;border-radius:10px;">Bill →</div>
@@ -912,16 +926,16 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
           <input type="file" id="khItemGalleryInput" accept="image/*" style="display:none;" onchange="khataHandleItemPhoto(event)">
         </div>
         <div class="row2">
-          <div class="field"><label>Item Name</label><input type="text" id="khItemName" placeholder="e.g. Parle-G Biscuit" oninput="khataUpdateAutoIconPreview()"></div>
-          <div class="field"><label>Selling Price (₹)</label><input type="number" id="khItemPrice" placeholder="e.g. 10"></div>
+          <div class="field"><label id="khItemNameLabel">Item Name</label><input type="text" id="khItemName" placeholder="e.g. Parle-G Biscuit" oninput="khataUpdateAutoIconPreview()"></div>
+          <div class="field"><label id="khItemPriceLabel">Selling Price (₹)</label><input type="number" id="khItemPrice" placeholder="e.g. 10"></div>
         </div>
         <div class="row2">
           <div class="field"><label>Cost Price (₹) <span style="font-weight:400;color:var(--muted);">optional</span></label><input type="number" id="khItemCost" placeholder="e.g. 6"></div>
-          <div class="field"><label>Low Stock Alert Below</label><input type="number" id="khItemLowStock" placeholder="e.g. 5" value="5"></div>
+          <div class="field" id="khItemLowStockField"><label>Low Stock Alert Below</label><input type="number" id="khItemLowStock" placeholder="e.g. 5" value="5"></div>
         </div>
-        <div class="row2">
-          <div class="field"><label id="khItemStockLabel">Opening Stock (Qty)</label><input type="number" id="khItemStock" placeholder="Leave blank = don't track stock"></div>
-          <div class="field"><label>Expiry Date <span style="font-weight:400;color:var(--muted);">optional</span></label><input type="date" id="khItemExpiry"></div>
+        <div class="row2" id="khItemStockExpiryRow">
+          <div class="field" id="khItemStockField"><label id="khItemStockLabel">Opening Stock (Qty)</label><input type="number" id="khItemStock" placeholder="Leave blank = don't track stock"></div>
+          <div class="field" id="khItemExpiryField"><label>Expiry Date <span style="font-weight:400;color:var(--muted);">optional</span></label><input type="date" id="khItemExpiry"></div>
         </div>
         <div class="row2">
           <div class="field" style="visibility:hidden;"></div>
@@ -1123,6 +1137,15 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
           <button class="btn" style="flex:1;background:var(--green);" onclick="khataSendWhatsappReminder(khataCurrentCustomer, khataCurrentCustomerBalance())">WhatsApp</button>
           <button class="btn" style="flex:1;background:var(--muted);" onclick="khataShareReminder(khataCurrentCustomer, khataCurrentCustomerBalance())">Share…</button>
         </div>
+      </div>
+      <div class="card" style="border:1.5px solid var(--brass);background:linear-gradient(135deg,rgba(140,90,20,.10),rgba(140,90,20,.03));">
+        <h3 style="display:flex;align-items:center;gap:6px;">💵 Quick Charge <span style="font-weight:400;font-size:11px;color:var(--muted);">— no item needed</span></h3>
+        <div class="note" style="margin:0 0 10px;">For a one-off job or service — adds straight to this customer's udhaar balance as a credit sale.</div>
+        <div class="row2">
+          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">What's this for?</label><input type="text" id="khCustQuickChargeDesc" placeholder="e.g. Oil Change"></div>
+          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">Amount (₹)</label><input type="number" id="khCustQuickChargeAmount" placeholder="e.g. 500" inputmode="decimal"></div>
+        </div>
+        <button class="btn" style="width:100%;background:linear-gradient(135deg,#186B45,#0F5236);" onclick="khataAddQuickChargeToCustomer()">➕ Add & Bill to This Customer</button>
       </div>
       <div class="card">
         <h3>Log a Payment Received</h3>
@@ -2041,7 +2064,14 @@ let supabaseClient = null;
 let khataUserId = null; // set once the customer is signed in
 try{
   if(window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY){
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,      // keep the session in localStorage across closes/reopens
+        autoRefreshToken: true,    // silently renew it before it expires
+        detectSessionInUrl: true,  // pick up the session after the Google redirect comes back
+        flowType: 'pkce'           // more reliable than the old implicit flow on mobile redirects
+      }
+    });
   }
 }catch(e){ supabaseClient = null; }
 
@@ -2137,6 +2167,7 @@ async function khataSignOut(){
   if(supabaseClient) await supabaseClient.auth.signOut();
   khataUserId = null;
   document.getElementById('khAppRoot').style.display='none';
+  document.getElementById('khLoadingOverlay').style.display='none';
   document.getElementById('khAuthScreen').style.display='flex';
   document.getElementById('khAuthEmail').value=''; document.getElementById('khAuthPassword').value='';
 }
@@ -2146,9 +2177,17 @@ async function khataOnSignedIn(session){
   khataUserId = session.user.id;
   document.getElementById('khAuthScreen').style.display='none';
   document.getElementById('khAppRoot').style.display='block';
+  document.getElementById('khLoadingOverlay').style.display='flex';
   const emailNote = document.getElementById('khAcctEmailNote');
   if(emailNote) emailNote.textContent = 'Signed in as ' + (session.user.email||'');
-  await startKhataApp();
+  try{
+    await startKhataApp();
+  } catch(e){
+    console.error('startKhataApp failed:', e);
+    showView('view-khata','nav-home'); /* fall back to the shell instead of a blank screen */
+  } finally {
+    document.getElementById('khLoadingOverlay').style.display='none';
+  }
 }
 async function khataInitAuth(){
   if(!supabaseClient){
@@ -8064,6 +8103,31 @@ function khataOpenTextImport(){
 function khataCloseTextImport(){
   document.getElementById('khTextImportOverlay').classList.remove('show');
 }
+/* ---------------- Quick Charge (bill a one-off amount without creating an item) ---------------- */
+// Drops a line straight into the current bill with no matching catalog
+// item (itemId stays null) — used for one-off service/labour charges a
+// business like a garage, salon, or repair shop bills for without wanting
+// to set up a permanent item first. khataFinalizeSale already skips stock
+// deduction for any line whose itemId doesn't match an item in
+// khataItemsCache, so this is safe to add straight to the cart. Lives as
+// an always-visible inline card on the Sell screen — no modal, one tap.
+function khataAddQuickCharge(){
+  const descEl = document.getElementById('khQuickChargeDesc');
+  const amountEl = document.getElementById('khQuickChargeAmount');
+  const desc = descEl.value.trim();
+  const amount = parseFloat(amountEl.value)||0;
+  if(!desc){ alert('Please enter what this charge is for.'); descEl.focus(); return; }
+  if(amount<=0){ alert('Please enter a valid amount.'); amountEl.focus(); return; }
+  khataCart.push({
+    itemId: null, itemName: desc, rate: amount, unit: 'full', qty: 1, total: amount,
+    costPrice: 0, section: 'Services', note: ''
+  });
+  descEl.value = '';
+  amountEl.value = '';
+  khataRenderCartBar();
+  khataSellSyncActiveTable();
+  descEl.focus();
+}
 function khataParseTextImport(){
   const text = document.getElementById('khTextImportInput').value;
   if(!text || !text.trim()){ alert('Type or paste at least one bill first.'); return; }
@@ -8707,6 +8771,36 @@ function khataLogPayment(){
   document.getElementById('khPayNote').value = '';
   renderKhataCustomerDetail();
   khataShowPaymentReceipt(payment);
+}
+// Bills a one-off charge straight to this customer's udhaar balance —
+// no Sell-screen cart, no item setup. Builds the same sale shape
+// khataFinalizeSale would (a single line, itemId:null so no stock is
+// ever touched), logs it as an udhaar sale for the customer whose folder
+// is currently open, and shows the usual bill receipt so it can be
+// shared/printed immediately, same as billing normally would.
+function khataAddQuickChargeToCustomer(){
+  if(!khataCurrentCustomer) return;
+  const descEl = document.getElementById('khCustQuickChargeDesc');
+  const amountEl = document.getElementById('khCustQuickChargeAmount');
+  const desc = descEl.value.trim();
+  const amount = parseFloat(amountEl.value)||0;
+  if(!desc){ alert('Please enter what this charge is for.'); descEl.focus(); return; }
+  if(amount<=0){ alert('Please enter a valid amount.'); amountEl.focus(); return; }
+  const now = new Date();
+  const items = [{itemId:null, itemName:desc, rate:amount, unit:'full', qty:1, total:amount, costPrice:0, section:'Services', note:''}];
+  const sale = {
+    id: Date.now(),
+    date: pfTodayStr(),
+    time: String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),
+    items, subtotal:amount, discountType:'pct', discountValue:0, discount:0, total:amount,
+    payment:'udhaar', customer: khataCurrentCustomer, splitCash:undefined, splitOther:undefined, cancelledItems:null
+  };
+  khataSalesCache.unshift(sale);
+  saveKhataSalesCache();
+  descEl.value = '';
+  amountEl.value = '';
+  renderKhataCustomerDetail();
+  khataShowReceipt(sale);
 }
 
 /* ---------------- Credit Score (Udhari customers) ----------------
@@ -11999,10 +12093,15 @@ function khataApplyLoadedStateToUI(){
   khataLang = khataSettings.lang || 'en';
 }
 async function startKhataApp(){
+  /* Paint the home shell immediately (it's mostly static markup with
+     ₹0 placeholders) instead of waiting on ~19 parallel data reads to
+     finish first. If any of those reads throws below, the user still
+     sees a working app instead of a blank screen. */
+  showView('view-khata','nav-home');
   await khataLoadShopsRegistry();
   await khataLoadAllCaches();
   khataApplyLoadedStateToUI();
-  showView('view-khata','nav-home');
+  renderKhataHub(); /* refresh the numbers now that real data is in */
   khataApplyLanguage();
   khataMaybeShowDailyReminderNotification();
 }
@@ -12021,7 +12120,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-
 
 <!-- Adsterra Social Bar (Placement 30592376) -->
 <script src="https://pl30692875.effectivecpmnetwork.com/dd/80/cc/dd80cc7c16276d9aaab6377576f1f353.js"></script>

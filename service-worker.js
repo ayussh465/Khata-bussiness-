@@ -6,17 +6,30 @@
 // desktop install prompts on Windows, iOS, and Android, and to pass
 // requests straight through to the network.
 
-const CACHE_NAME = 'khata-shell-v1';
+// Bumped so browsers that already have v1 installed pick up this fix.
+const CACHE_NAME = 'khata-shell-v2';
 const SHELL_ASSETS = [
   './index.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
+  './favicon-32.png',
+  './apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) =>
+      // cache.addAll() is all-or-nothing: if a single file 404s, NONE of
+      // the assets get cached (this was silently swallowing that failure
+      // before). Cache each file independently instead, so one missing
+      // icon can't wipe out the whole shell cache.
+      Promise.all(
+        SHELL_ASSETS.map((url) =>
+          cache.add(url).catch((err) => {
+            console.warn('[SW] failed to cache', url, err);
+          })
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
