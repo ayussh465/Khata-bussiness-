@@ -805,6 +805,15 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
         <div class="kot-step"><div class="num">2</div><div class="txt">Items in This Bill</div></div>
         <div id="khSellOrderItemsList" style="margin-bottom:12px;"></div>
 
+        <div style="border:1.5px solid var(--brass);border-radius:10px;background:linear-gradient(135deg,rgba(140,90,20,.10),rgba(140,90,20,.03));padding:12px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;color:var(--brass-deep);margin-bottom:8px;">💵 Quick Charge <span style="font-weight:400;font-size:11px;color:var(--muted);">— no item needed</span></div>
+          <div class="row2">
+            <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">What's this for?</label><input type="text" id="khQuickChargeDesc" placeholder="e.g. Oil Change"></div>
+            <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">Amount (₹)</label><input type="number" id="khQuickChargeAmount" placeholder="e.g. 500" inputmode="decimal"></div>
+          </div>
+          <button class="btn" style="width:100%;background:linear-gradient(135deg,#186B45,#0F5236);" onclick="khataAddQuickCharge()">➕ Add to Bill</button>
+        </div>
+
         <div class="kot-step"><div class="num">3</div><div class="txt">Send to Kitchen or Bill</div></div>
         <div style="display:flex;gap:8px;">
           <button class="btn" style="flex:1;background:linear-gradient(135deg,#3a5a3a,#264026);" onclick="khataSellSendKOT()">💾 Save KOT</button>
@@ -819,14 +828,6 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
           </div>
           <div class="kpi-icon" style="font-size:26px;margin-bottom:0;">💰</div>
         </div>
-      </div>
-      <div class="card" style="border:1.5px solid var(--brass);background:linear-gradient(135deg,rgba(140,90,20,.10),rgba(140,90,20,.03));margin-bottom:14px;">
-        <h3 style="display:flex;align-items:center;gap:6px;">💵 Quick Charge <span style="font-weight:400;font-size:11px;color:var(--muted);">— no item needed</span></h3>
-        <div class="row2">
-          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">What's this for?</label><input type="text" id="khQuickChargeDesc" placeholder="e.g. Oil Change"></div>
-          <div class="field" style="margin-bottom:8px;"><label style="font-size:11px;">Amount (₹)</label><input type="number" id="khQuickChargeAmount" placeholder="e.g. 500" inputmode="decimal"></div>
-        </div>
-        <button class="btn" style="width:100%;background:linear-gradient(135deg,#186B45,#0F5236);" onclick="khataAddQuickCharge()">➕ Add to Bill</button>
       </div>
       <div class="section-label">Quick Entry</div>
       <div class="khata-mic-btn" id="khMicBtn" onclick="khataStartVoiceSale()">🎤 Voice Entry — speak item &amp; quantity</div>
