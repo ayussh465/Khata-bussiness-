@@ -2096,19 +2096,63 @@ const SUPABASE_ANON_KEY = 'sb_publishable_vK07KH6ODBRi3NJuJIaDgA_Ec9HbLAP';
 let supabaseClient = null;
 let khataUserId = null; // set once the customer is signed in
 
-// Cookie-based storage adapter (replaces localStorage)
+// Cookie-based storage adapter (replaces localStorage).
+// Supabase's session value (access token + refresh token + user info) is
+// often 3-5KB as JSON, which is bigger than a single cookie can hold
+// (browsers cap each cookie around ~4096 bytes total, name+attributes
+// included). So large values get split across numbered "chunk" cookies
+// (key.0, key.1, ...) and reassembled on read.
+const COOKIE_CHUNK_SIZE = 3000; // safely under the ~4096 byte per-cookie limit
+
+function khCookieRead(name){
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+function khCookieWrite(name, value, days){
+  const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+function khCookieDelete(name){
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+}
+
 const cookieStorage = {
   getItem: (key) => {
-    const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
-    return match ? decodeURIComponent(match[2]) : null;
+    // First, try the old-style single, unchunked cookie (and clean it up
+    // once its value has been migrated into the new chunked form).
+    const plain = khCookieRead(key);
+    if(plain !== null) return plain;
+
+    // Reassemble numbered chunks: key.0, key.1, ... until one is missing.
+    let value = '';
+    let i = 0;
+    while(true){
+      const chunk = khCookieRead(`${key}.${i}`);
+      if(chunk === null) break;
+      value += chunk;
+      i++;
+    }
+    return i > 0 ? value : null;
   },
   setItem: (key, value) => {
     const days = 90;
-    const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
-    document.cookie = `${key}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+    // Clear out any previous chunks / plain cookie for this key first, so
+    // we never leave stale leftover chunks behind (e.g. shrinking value).
+    cookieStorage.removeItem(key);
+
+    if(value.length <= COOKIE_CHUNK_SIZE){
+      khCookieWrite(key, value, days);
+      return;
+    }
+    for(let i = 0, offset = 0; offset < value.length; i++, offset += COOKIE_CHUNK_SIZE){
+      khCookieWrite(`${key}.${i}`, value.slice(offset, offset + COOKIE_CHUNK_SIZE), days);
+    }
   },
   removeItem: (key) => {
-    document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    khCookieDelete(key);
+    for(let i = 0; i < 20; i++){ // 20 chunks is far more than we'd ever need
+      khCookieDelete(`${key}.${i}`);
+    }
   }
 };
 
