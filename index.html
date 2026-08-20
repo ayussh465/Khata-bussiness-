@@ -1072,10 +1072,42 @@ body.dark .app{background-image:radial-gradient(circle at 100% 0%, rgba(217,180,
       <div class="result-card" style="margin-top:16px;">
         <div class="rline hi"><span>Total Outstanding</span><span class="v" id="khUdhariGrandTotal">₹0</span></div>
       </div>
-      <button class="btn" style="margin:0 0 12px;background:linear-gradient(135deg,#0F3D2E,#155A44);" onclick="buildKhataUdhariLedgerPdf()">⬇ Download Udhari Ledger (All Customers)</button>
+      <button class="btn" style="margin:0 0 10px;background:linear-gradient(135deg,#0F3D2E,#155A44);" onclick="buildKhataUdhariLedgerPdf()">⬇ Download Udhari Ledger (All Customers)</button>
+      <button class="btn" style="margin:0 0 12px;background:var(--brass-soft);color:var(--brass-deep);border:1px solid var(--brass);text-transform:none;letter-spacing:0;box-shadow:none;font-weight:600;" onclick="showView('view-khata-migrate')">⬆ Import Customer History (OkCredit / Khatabook)</button>
       <div id="khUdhariReminderBanner"></div>
       <div id="khUdhariDupArea"></div>
       <div id="khUdhariList"></div>
+    </div>
+
+    <!-- ============ KHATA — MIGRATE CUSTOMER HISTORY (from OkCredit / Khatabook etc.) ============ -->
+    <div class="view" id="view-khata-migrate">
+      <div class="card" style="margin-top:16px;">
+        <h3>⬆ Import Customer History</h3>
+        <div class="note" style="margin:0 0 10px;">In OkCredit / Khatabook, open the customer's ledger and use its <b>Export</b> / <b>Download Statement</b> option (PDF or Excel). Then open that file, select all the text (or all the rows in Excel), copy it, and paste it below. This works one customer at a time so the running balance carries over correctly.</div>
+        <div class="field">
+          <label>Customer Name</label>
+          <input type="text" id="khMigrateCustName" list="khCustomerSuggestions" placeholder="e.g. Ramesh bhai">
+        </div>
+        <div class="field">
+          <label>Phone No. (optional)</label>
+          <input type="tel" id="khMigrateCustPhone" placeholder="e.g. 98765 43210">
+        </div>
+        <div class="field">
+          <label>Pasted Statement</label>
+          <textarea id="khMigrateText" rows="8" placeholder="Paste the copied statement text here — dates, 'You Gave' / 'You Got' lines, or Debit/Credit columns are all fine." style="width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+        </div>
+        <button class="btn" style="width:100%;" onclick="khataParseMigrateText()">🔍 Parse &amp; Review</button>
+      </div>
+      <div class="card" id="khMigratePreviewCard" style="display:none;">
+        <h3 style="display:flex;align-items:center;justify-content:space-between;">📋 Review Entries <span style="font-weight:400;font-size:11px;color:var(--muted);" id="khMigrateCount"></span></h3>
+        <div class="note" style="margin:0 0 10px;">Check the date, type (Sale = they owe you / Payment = they paid you), and amount for each row below — fix or delete anything the parser got wrong, then confirm.</div>
+        <div id="khMigrateRows"></div>
+        <button class="btn" style="width:100%;background:var(--muted);margin-bottom:10px;" onclick="khataMigrateAddRow()">+ Add Row</button>
+        <div class="result-card" style="margin-bottom:10px;">
+          <div class="rline hi"><span>Resulting Balance</span><span class="v" id="khMigrateBalancePreview">₹0</span></div>
+        </div>
+        <button class="btn" style="width:100%;background:linear-gradient(135deg,#186B45,#0F5236);" onclick="khataConfirmMigrateImport()">✅ Confirm Import</button>
+      </div>
     </div>
 
     <!-- ============ KHATA — UDHARI CUSTOMER DETAIL ============ -->
@@ -2063,11 +2095,29 @@ const SUPABASE_URL = 'https://digcrjzxjppuqgeczzmh.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_vK07KH6ODBRi3NJuJIaDgA_Ec9HbLAP';
 let supabaseClient = null;
 let khataUserId = null; // set once the customer is signed in
+
+// Cookie-based storage adapter (replaces localStorage)
+const cookieStorage = {
+  getItem: (key) => {
+    const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : null;
+  },
+  setItem: (key, value) => {
+    const days = 90;
+    const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+    document.cookie = `${key}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  },
+  removeItem: (key) => {
+    document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+  }
+};
+
 try{
   if(window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY){
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        persistSession: true,      // keep the session in localStorage across closes/reopens
+        storage: cookieStorage,    // keep the session in cookies instead of localStorage
+        persistSession: true,      // keep the session persisted across closes/reopens
         autoRefreshToken: true,    // silently renew it before it expires
         detectSessionInUrl: true,  // pick up the session after the Google redirect comes back
         flowType: 'pkce'           // more reliable than the old implicit flow on mobile redirects
@@ -8804,6 +8854,215 @@ function khataAddQuickChargeToCustomer(){
   khataShowReceipt(sale);
 }
 
+/* ---------------- Migrate Customer History (from OkCredit / Khatabook / etc.) ----------------
+   Neither app offers a bulk machine-readable export — the only thing a
+   shop owner can get out of them is a per-customer PDF/Excel statement.
+   So the import here is deliberately copy-paste based: open that
+   statement, select-all, copy, paste into a textarea. This parses each
+   line for a date + amount + Sale-vs-Payment direction (via keywords
+   like "you gave"/"you got", debit/credit columns, etc.), then — same
+   "always land on an editable review screen" philosophy as the CSV/text
+   bill import — shows every parsed row so it can be corrected or
+   deleted before anything is actually saved. Confirming recreates the
+   customer's full backdated history as normal udhaar sales + payments,
+   so the running balance and reports all just work as if it had always
+   been entered here. */
+let khataMigrateRows = []; // {date:'YYYY-MM-DD', type:'sale'|'payment', desc, amount}
+function khataOpenMigrate(){
+  khataMigrateRows = [];
+  const nameEl = document.getElementById('khMigrateCustName');
+  const phoneEl = document.getElementById('khMigrateCustPhone');
+  const textEl = document.getElementById('khMigrateText');
+  if(nameEl) nameEl.value = '';
+  if(phoneEl) phoneEl.value = '';
+  if(textEl) textEl.value = '';
+  const previewCard = document.getElementById('khMigratePreviewCard');
+  if(previewCard) previewCard.style.display = 'none';
+  khataFillCustomerSuggestions();
+}
+const KHATA_MIGRATE_MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function khataMigrateParseDate(str){
+  // dd/mm/yyyy or dd-mm-yyyy or dd.mm.yyyy
+  let m = str.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+  if(m){
+    let [,d,mo,y] = m;
+    if(y.length===2) y = (+y<70 ? '20'+y : '19'+y);
+    d=d.padStart(2,'0'); mo=mo.padStart(2,'0');
+    if(+mo>=1 && +mo<=12 && +d>=1 && +d<=31) return y+'-'+mo+'-'+d;
+  }
+  // yyyy-mm-dd
+  m = str.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if(m){ let [,y,mo,d]=m; return y+'-'+mo.padStart(2,'0')+'-'+d.padStart(2,'0'); }
+  // dd Mon yyyy / Mon dd, yyyy
+  m = str.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})[,]?\s+(\d{4})\b/);
+  if(m){
+    const mo = KHATA_MIGRATE_MONTHS[m[2].slice(0,3).toLowerCase()];
+    if(mo) return m[3]+'-'+String(mo).padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  }
+  m = str.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})[,]?\s+(\d{4})\b/);
+  if(m){
+    const mo = KHATA_MIGRATE_MONTHS[m[1].slice(0,3).toLowerCase()];
+    if(mo) return m[3]+'-'+String(mo).padStart(2,'0')+'-'+m[2].padStart(2,'0');
+  }
+  return null;
+}
+function khataMigrateExtractAmounts(str){
+  const out = [];
+  const re = /₹?\s*(\d[\d,]*(?:\.\d{1,2})?)/g;
+  let m;
+  while((m = re.exec(str))){
+    const val = parseFloat(m[1].replace(/,/g,''));
+    if(!isNaN(val) && val>0) out.push(val);
+  }
+  return out;
+}
+function khataParseMigrateText(){
+  const text = (document.getElementById('khMigrateText').value||'').trim();
+  if(!text){ alert('Paste the copied statement text first.'); return; }
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const rows = [];
+  let lastDate = null;
+  let pendingDesc = '';
+  for(const raw of lines){
+    const low = raw.toLowerCase();
+    // Skip obvious headers/footers/pure-balance lines — nothing to import from them
+    if(/^(statement|khata|ledger|report|page \d|opening balance|closing balance|generated by|powered by)/.test(low)) continue;
+    if(/^balance\b/.test(low) && !/(gave|got|paid|received|sale|payment|debit|credit)/.test(low)) continue;
+
+    const dateHere = khataMigrateParseDate(raw);
+    if(dateHere) lastDate = dateHere;
+
+    // Strip the date substring out before hunting for the transaction amount,
+    // so a 2024/12/31-style date never gets mistaken for a rupee amount.
+    let stripped = raw;
+    if(dateHere){
+      stripped = raw.replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/,'')
+                     .replace(/\b\d{4}-\d{1,2}-\d{1,2}\b/,'')
+                     .replace(/\b\d{1,2}\s+[A-Za-z]{3,9}[,]?\s+\d{4}\b/,'')
+                     .replace(/\b[A-Za-z]{3,9}\s+\d{1,2}[,]?\s+\d{4}\b/,'');
+    }
+    const amounts = khataMigrateExtractAmounts(stripped);
+    const isSale = /(you gave|gave|sale|debit|\bdr\b)/i.test(low);
+    const isPayment = /(you got|received|payment|paid|credit|\bcr\b)/i.test(low);
+
+    if(!amounts.length){
+      // No amount on this line — could be a lone description line before
+      // the amount arrives on the next line/column. Remember it.
+      if(dateHere) pendingDesc = '';
+      else if(raw.length<60) pendingDesc = raw;
+      continue;
+    }
+    if(!lastDate) continue; // can't place a transaction with no date yet
+
+    // If both a "gave" and "got" keyword show up, or a Debit/Credit column
+    // pair, take the two largest numbers as [debit, credit] in that order.
+    let type = isSale ? 'sale' : (isPayment ? 'payment' : null);
+    let amount;
+    if(amounts.length>=2 && (/(debit).*(credit)/i.test(low) || (isSale && isPayment))){
+      amount = amounts[0]>0 ? amounts[0] : amounts[1];
+      type = amounts[0]>0 ? 'sale' : 'payment';
+    } else {
+      // Balance columns tend to be the largest running total on the line —
+      // when there's more than one number and no clear keyword, assume the
+      // smallest is the transaction and the largest is the balance.
+      amount = amounts.length>1 ? Math.min(...amounts) : amounts[0];
+    }
+    if(!type) type = 'sale'; // default assumption — user can flip it in review
+    let desc = raw.replace(/₹?\s*\d[\d,]*(?:\.\d{1,2})?/g,'').replace(/\s{2,}/g,' ').trim();
+    if(!desc || desc.length<2) desc = pendingDesc || (type==='sale' ? 'Sale' : 'Payment received');
+    pendingDesc = '';
+    rows.push({date:lastDate, type, desc: desc.slice(0,60), amount});
+  }
+  if(!rows.length){
+    alert("Couldn't find any dated transaction lines in that text. You can still add rows manually below.");
+  }
+  khataMigrateRows = rows;
+  document.getElementById('khMigratePreviewCard').style.display = 'block';
+  khataRenderMigrateRows();
+  document.getElementById('khMigratePreviewCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function khataRenderMigrateRows(){
+  const el = document.getElementById('khMigrateRows');
+  const countEl = document.getElementById('khMigrateCount');
+  const balEl = document.getElementById('khMigrateBalancePreview');
+  if(countEl) countEl.textContent = khataMigrateRows.length+' row'+(khataMigrateRows.length===1?'':'s');
+  let running = 0;
+  khataMigrateRows.forEach(r=>{ running += r.type==='sale' ? r.amount : -r.amount; });
+  if(balEl) balEl.textContent = inr(running);
+  if(!el) return;
+  if(!khataMigrateRows.length){
+    el.innerHTML = '<div class="note">No rows yet — tap "+ Add Row" to enter one manually.</div>';
+    return;
+  }
+  el.innerHTML = khataMigrateRows.map((r,i)=>`
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;">
+      <div class="row2" style="margin-bottom:8px;">
+        <div class="field" style="margin-bottom:0;"><label style="font-size:11px;">Date</label>
+          <input type="date" value="${escapeAttr(r.date)}" onchange="khataMigrateUpdateRow(${i},'date',this.value)"></div>
+        <div class="field" style="margin-bottom:0;"><label style="font-size:11px;">Type</label>
+          <select onchange="khataMigrateUpdateRow(${i},'type',this.value)" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:13px;font-family:inherit;box-sizing:border-box;">
+            <option value="sale" ${r.type==='sale'?'selected':''}>Sale (they owe you)</option>
+            <option value="payment" ${r.type==='payment'?'selected':''}>Payment (they paid you)</option>
+          </select></div>
+      </div>
+      <div class="row2" style="margin-bottom:8px;">
+        <div class="field" style="margin-bottom:0;"><label style="font-size:11px;">Description</label>
+          <input type="text" value="${escapeAttr(r.desc)}" onchange="khataMigrateUpdateRow(${i},'desc',this.value)"></div>
+        <div class="field" style="margin-bottom:0;"><label style="font-size:11px;">Amount (₹)</label>
+          <input type="number" value="${r.amount}" onchange="khataMigrateUpdateRow(${i},'amount',this.value)"></div>
+      </div>
+      <button class="btn" style="width:100%;padding:8px;font-size:11px;background:var(--muted);" onclick="khataMigrateDeleteRow(${i})">🗑 Remove Row</button>
+    </div>
+  `).join('');
+}
+function khataMigrateUpdateRow(idx, field, value){
+  const r = khataMigrateRows[idx];
+  if(!r) return;
+  if(field==='amount') r.amount = parseFloat(value)||0;
+  else r[field] = value;
+  if(field==='type' || field==='amount') khataRenderMigrateRows(); // refresh balance total
+}
+function khataMigrateDeleteRow(idx){
+  khataMigrateRows.splice(idx,1);
+  khataRenderMigrateRows();
+}
+function khataMigrateAddRow(){
+  khataMigrateRows.push({date:pfTodayStr(), type:'sale', desc:'', amount:0});
+  document.getElementById('khMigratePreviewCard').style.display = 'block';
+  khataRenderMigrateRows();
+}
+function khataConfirmMigrateImport(){
+  const name = document.getElementById('khMigrateCustName').value.trim();
+  if(!name){ alert('Please enter the customer name.'); return; }
+  if(!khataMigrateRows.length){ alert('Add at least one row first.'); return; }
+  const bad = khataMigrateRows.find(r=>!r.date || !r.amount || r.amount<=0);
+  if(bad){ alert('Every row needs a date and an amount greater than zero.'); return; }
+  const phone = document.getElementById('khMigrateCustPhone').value.trim();
+  khataSetCustomerPhone(name, phone);
+  let idSeed = Date.now();
+  khataMigrateRows.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+    idSeed += 1;
+    if(r.type==='sale'){
+      const items = [{itemId:null, itemName:r.desc||'Sale', rate:r.amount, unit:'full', qty:1, total:r.amount, costPrice:0, section:'Migrated', note:'Imported from previous app'}];
+      khataSalesCache.unshift({
+        id: idSeed, date: r.date, time:'00:00',
+        items, subtotal:r.amount, discountType:'pct', discountValue:0, discount:0, total:r.amount,
+        payment:'udhaar', customer:name, splitCash:undefined, splitOther:undefined, cancelledItems:null
+      });
+    } else {
+      khataPaymentsCache.unshift({ id: idSeed, customer:name, amount:r.amount, date:r.date, note:(r.desc||'Payment received')+' (imported)' });
+    }
+  });
+  saveKhataSalesCache();
+  saveKhataPaymentsCache();
+  alert('Imported '+khataMigrateRows.length+' entries for '+name+'.');
+  khataMigrateRows = [];
+  khataCurrentCustomer = name;
+  showView('view-khata-udhari-detail');
+  document.getElementById('khTopbarTitle').textContent = name;
+  renderKhataCustomerDetail();
+}
+
 /* ---------------- Credit Score (Udhari customers) ----------------
    A simple, explainable 0-100 score blending: how much of what they've
    bought on credit has actually been paid back, how overdue the balance
@@ -10719,7 +10978,8 @@ const KHATA_VIEW_HEADERS = {
   'view-staff-folder': {title:'Staff Folder', sub:'Attendance, payments & due', back:'view-staff-list'},
   'view-khata-cashrecon': {title:'Cash Tally', sub:'Reconcile the cash drawer', back:'view-khata'},
   'view-khata-tables': {title:'Tables', sub:'Table-wise orders & KOT', back:'view-khata'},
-  'view-khata-table-order': {title:'Table Order', sub:'Add items, send KOT, or bill', back:'view-khata-tables'}
+  'view-khata-table-order': {title:'Table Order', sub:'Add items, send KOT, or bill', back:'view-khata-tables'},
+  'view-khata-migrate': {title:'Import Customer History', sub:'From OkCredit, Khatabook, etc.', back:'view-khata-udhari'}
 };
 let khataHeaderBackTarget = null;
 function khataHeaderBack(){ if(khataHeaderBackTarget) showView(khataHeaderBackTarget); }
@@ -10765,6 +11025,7 @@ function showView(id, navId){
   if(id==='view-khata-cashrecon') renderKhataCashRecon();
   if(id==='view-khata-tables') renderKhataTableGrid();
   if(id==='view-khata-table-order') renderKhataTableOrder();
+  if(id==='view-khata-migrate') khataOpenMigrate();
 }
 function goHome(){ showView('view-khata','nav-home'); }
 
