@@ -2096,14 +2096,85 @@ const SUPABASE_ANON_KEY = 'sb_publishable_vK07KH6ODBRi3NJuJIaDgA_Ec9HbLAP';
 let supabaseClient = null;
 let khataUserId = null; // set once the customer is signed in
 
-// Cookie-based storage adapter (replaces localStorage).
-// Supabase's session value (access token + refresh token + user info) is
-// often 3-5KB as JSON, which is bigger than a single cookie can hold
-// (browsers cap each cookie around ~4096 bytes total, name+attributes
-// included). So large values get split across numbered "chunk" cookies
-// (key.0, key.1, ...) and reassembled on read.
-const COOKIE_CHUNK_SIZE = 3000; // safely under the ~4096 byte per-cookie limit
+// ---- Storage adapter for the Supabase auth session ----
+// Root cause of "logged out after closing the app": this runs inside a
+// Median.co-wrapped native WebView. Per Median's own docs, cookies set
+// inside that WebView are NOT reliable for long-term session storage —
+// iOS actively purges them after ~7 days of inactivity (Apple's ITP), and
+// Android can evict them if the OS reclaims app storage. Cookies (and
+// localStorage) live inside the WebView's data store, which is exactly
+// what gets cleared.
+//
+// The real fix is Median's "Native Datastore" bridge (median.storage.app),
+// which writes to actual native storage (UserDefaults on iOS,
+// SharedPreferences on Android) — outside the WebView entirely, so it
+// survives app close/reopen and isn't subject to WebView cookie eviction.
+// This requires the JavaScript Bridge + Native Datastore plugin to be
+// turned on in Median App Studio for median.storage to exist.
+//
+// medianStorage below uses that when available. When it's not (e.g.
+// testing this file in a plain desktop/mobile browser), it falls back to
+// chunked cookies, since a Supabase session is often bigger than one
+// cookie's ~4KB limit.
 
+// --- Wait for the Median JS Bridge to actually finish injecting ---
+// Median's `median` object is injected asynchronously at runtime, so it
+// is NOT guaranteed to exist yet at DOMContentLoaded. If we check for it
+// too early on a cold start, khHasMedianDatastore() sees it missing,
+// silently falls back to (empty) cookies, and the real session sitting in
+// native storage never gets read — which is exactly the *intermittent*
+// logout you saw. Median's documented fix is median_library_ready(),
+// which the injected library calls once it's actually ready.
+let khMedianReadyResolve;
+const khMedianReadyPromise = new Promise((resolve) => { khMedianReadyResolve = resolve; });
+window.median_library_ready = function(){ khMedianReadyResolve(); };
+// Cover the case where the library finished injecting before this script
+// itself ran (so it already missed calling the callback above).
+if(typeof median !== 'undefined'){ khMedianReadyResolve(); }
+// Safety net so a plain desktop/mobile browser (no Median wrapper, so
+// median_library_ready never fires) doesn't hang forever.
+setTimeout(khMedianReadyResolve, 1500);
+
+function khMedianGet(key){
+  return new Promise((resolve) => {
+    try{
+      median.storage.app.get({
+        key,
+        callback: (result) => {
+          if(result && result.status === 'success') resolve(result.data);
+          else resolve(null); // e.g. 'preference-not-found'
+        }
+      });
+    }catch(e){ resolve(null); }
+  });
+}
+function khMedianSet(key, value){
+  return new Promise((resolve) => {
+    try{
+      median.storage.app.set({
+        key, value,
+        statuscallback: (result) => resolve(result && result.status === 'success')
+      });
+    }catch(e){ resolve(false); }
+  });
+}
+function khMedianRemove(key){
+  return new Promise((resolve) => {
+    try{
+      median.storage.app.delete({
+        key,
+        statuscallback: () => resolve(true)
+      });
+    }catch(e){ resolve(false); }
+  });
+}
+function khHasMedianDatastore(){
+  return typeof median !== 'undefined' && median && median.storage && median.storage.app
+    && typeof median.storage.app.get === 'function';
+}
+
+// --- Chunked-cookie fallback (only used outside the Median app) ---
+const COOKIE_CHUNK_SIZE = 3000; // safely under the ~4096 byte per-cookie limit
 function khCookieRead(name){
   const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
   return match ? decodeURIComponent(match[2]) : null;
@@ -2115,15 +2186,10 @@ function khCookieWrite(name, value, days){
 function khCookieDelete(name){
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
-
 const cookieStorage = {
   getItem: (key) => {
-    // First, try the old-style single, unchunked cookie (and clean it up
-    // once its value has been migrated into the new chunked form).
     const plain = khCookieRead(key);
     if(plain !== null) return plain;
-
-    // Reassemble numbered chunks: key.0, key.1, ... until one is missing.
     let value = '';
     let i = 0;
     while(true){
@@ -2136,31 +2202,31 @@ const cookieStorage = {
   },
   setItem: (key, value) => {
     const days = 90;
-    // Clear out any previous chunks / plain cookie for this key first, so
-    // we never leave stale leftover chunks behind (e.g. shrinking value).
     cookieStorage.removeItem(key);
-
-    if(value.length <= COOKIE_CHUNK_SIZE){
-      khCookieWrite(key, value, days);
-      return;
-    }
+    if(value.length <= COOKIE_CHUNK_SIZE){ khCookieWrite(key, value, days); return; }
     for(let i = 0, offset = 0; offset < value.length; i++, offset += COOKIE_CHUNK_SIZE){
       khCookieWrite(`${key}.${i}`, value.slice(offset, offset + COOKIE_CHUNK_SIZE), days);
     }
   },
   removeItem: (key) => {
     khCookieDelete(key);
-    for(let i = 0; i < 20; i++){ // 20 chunks is far more than we'd ever need
-      khCookieDelete(`${key}.${i}`);
-    }
+    for(let i = 0; i < 20; i++){ khCookieDelete(`${key}.${i}`); }
   }
+};
+
+// --- Combined adapter Supabase actually uses: Median native storage when
+//     available (inside the wrapped app), cookies otherwise (plain browser) ---
+const cookieStorageAsync = {
+  getItem: async (key) => khHasMedianDatastore() ? khMedianGet(key) : cookieStorage.getItem(key),
+  setItem: async (key, value) => khHasMedianDatastore() ? khMedianSet(key, value) : cookieStorage.setItem(key, value),
+  removeItem: async (key) => khHasMedianDatastore() ? khMedianRemove(key) : cookieStorage.removeItem(key)
 };
 
 try{
   if(window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY){
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        storage: cookieStorage,    // keep the session in cookies instead of localStorage
+        storage: cookieStorageAsync, // Median native storage app-side, cookies in a plain browser
         persistSession: true,      // keep the session persisted across closes/reopens
         autoRefreshToken: true,    // silently renew it before it expires
         detectSessionInUrl: true,  // pick up the session after the Google redirect comes back
@@ -2293,6 +2359,11 @@ async function khataInitAuth(){
     document.getElementById('khAuthSecondaryBtn').disabled = true;
     return;
   }
+  /* Wait for the Median bridge (or the 1.5s safety-net timeout in a plain
+     browser) before touching storage, so the very first getSession() call
+     below reliably sees native-datastore data instead of racing ahead of
+     the bridge injection and falling back to empty cookies. */
+  await khMedianReadyPromise;
   /* Catches sign-ins that happen via redirect (Google OAuth returns here),
      as well as normal email/password sign-ins — one listener handles both. */
   supabaseClient.auth.onAuthStateChange((_event, session) => {
