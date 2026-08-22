@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.ayussh465.twa",
+    "sha256_cert_fingerprints": ["D3:07:80:F3:C4:C6:84:52:42:6F:75:71:2B:75:B1:1E:87:0F:25:F2:F3:58:91:A3:E6:2B:A4:A7:66:D6:9F:A1"]
+  }
+}]
